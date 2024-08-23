@@ -2,6 +2,17 @@
 
 VET="-strict-style -vet-unused -vet-using-stmt -vet-using-param -vet-style -vet-semicolon"
 
+# Uncomment these lines if you want to build an atlas from any aseprite files in a `textures` subfolder.
+# odin build atlas_builder -out:atlas_builder.bin -strict-style -vet-using-stmt -vet-using-param -vet-semicolon -debug
+# if [ ! $? -eq 0 ]; then
+#     exit 1
+# fi
+# ./atlas_builder.bin
+# if [ ! $? -eq 0 ]; then
+#     exit 1
+# fi
+# chmod +rw atlas.odin
+
 # NOTE: this is a recent addition to the Odin compiler, if you don't have this command
 # you can change this to the path to the Odin folder that contains vendor, eg: "~/Odin".
 ROOT=$(odin root)
@@ -36,12 +47,14 @@ case $(uname) in
 esac
 
 # Build the game.
-odin build . -use-separate-modules -extra-linker-flags:"$EXTRA_LINKER_FLAGS" -show-timings -define:RAYLIB_SHARED=true -build-mode:dll -out:game_tmp$DLL_EXT -debug $VET
+odin build . -extra-linker-flags:"$EXTRA_LINKER_FLAGS" -show-timings -define:RAYLIB_SHARED=true -build-mode:dll -out:game_tmp$DLL_EXT -debug $VET
 
 # Need to use a temp file on Linux because it first writes an empty `game.so`, which the game will load before it is actually fully written.
 mv game_tmp$DLL_EXT game$DLL_EXT
 
 # Do not build the game.bin if it is already running.
-if ! pgrep game.bin > /dev/null; then
-    odin build main_hot_reload -use-separate-modules -out:game.bin $VET -debug
+if pgrep game.bin > /dev/null; then
+    exit 1
+else
+    odin build main_hot_reload -out:game.bin $VET -debug
 fi

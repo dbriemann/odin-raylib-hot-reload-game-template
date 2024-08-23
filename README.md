@@ -27,12 +27,6 @@ The template also supports Linux and MacOS, all mentions of `.bat` scripts have 
 
 Unlike Windows, there is no need to copy any Raylib library to the root of this repo.
 
-#### Important note on Linux
-
-The Raylib bindings are currently a bit broken regarding shared libraries, there is this PR that is trying to fix it: https://github.com/odin-lang/Odin/pull/3369.
-
-So this will work nicely out of the box when that is corrected & merged, what you should be able to do at the moment as a workaround is go into the `vendor/raylib/raylib.odin` file and change the `"linux/libraylib.so.500"` to `"linux/libraylib.so"`.
-
 ## Sublime Text
 
 There's sublime project called `project.sublime-project` in case you use Sublime Text. It comes with a build system, you should be able to open the project, select the build system (Main Menu -> Tools -> Build System -> Game template) and then compile + run the game by pressing F7/Ctrl+B/Cmd+B. Edit the project file to change the name of the build system.
@@ -47,9 +41,26 @@ A task to build and hot reload is also included, build, run and rebuild with `Ct
 
 Only `game.odin` and `math.odin` are required to compile the game DLL. You can delete the other `.odin` files in the root directrory of the repository if you wish. They are there because they contain things I often use in all projects. Most of them have a description at the top of the file, explaining what it contains.
 
-## Demo video
+## Atlas builder
 
-I did a stream where I prototype a game by starting from scratch with this template. You can watch it here: https://www.youtube.com/watch?v=cl8EOjOaoXc It is very long, but it's mostly the front part that is interesting with regards to how to use this template.
+The `atlas_builder` subfolder contains a program that builds a texture atlas from separate aseprite and png files. You can look in `build_hot_reload.bat` for more info on how to enable it. The atlas builder outputs both an atlas PNG file as well as an `atlas.odin` file that contains metadata about where in the atlas the images are.
+
+The atlas builder is meant to be run before the game DLL is compiled. Then, in your gameplay you can use `atlas_textures` in `atlas.odin` to know where in the atlas your textures ended up. Load the `atlas.png` using `rl.LoadTexture()` and then draw using it, something like:
+
+```
+atlas_rect := atlas_textures[.Some_Texture]
+rl.DrawTextureRec(atlas_texture, atlas_rect, some_position, rl.WHITE)
+```
+
+For aseprite files with multiple frames animations will be outputted, which you find in the array `atlas_animations` of `atlas.odin`.
+
+## Demo streams
+
+Streams that start from this template:
+- CAR RACER prototype: https://www.youtube.com/watch?v=KVbHJ_CLdkA
+- "point & click" prototype: https://www.youtube.com/watch?v=iRvs1Xr1W6o
+- Metroidvania / platform prototype: https://www.youtube.com/watch?v=kIxEMchPc3Y
+- Top-down adventure prototype: https://www.youtube.com/watch?v=cl8EOjOaoXc
 
 ## Projects based on this template
 
@@ -59,6 +70,8 @@ I did a stream where I prototype a game by starting from scratch with this templ
 
 Got a project based on this template? I'd gladly have it on this list! It can be a game based on the template or an extension/spinoff of the template. Just send me a link on [Discord](https://discord.gg/4FsHgtBmFK) or on karl@zylinski.se, or PR the entry into this README 😻 
 
+## Support me on Patreon
+https://www.patreon.com/karl_zylinski
 
 ## Questions?
 
