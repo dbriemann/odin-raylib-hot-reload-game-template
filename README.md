@@ -1,12 +1,17 @@
+# Odin + Raylib + Hot Reload template (+ Atlas Builder!)
+By Karl Zylinski, http://zylinski.se -- Support me at https://www.patreon.com/karl_zylinski
+
+See branch [atlas-animation-example](https://github.com/karl-zylinski/odin-raylib-hot-reload-game-template/tree/atlas-animation-example) for example on how to use atlas builder and atlased animations.
+
 ## Description
 
 This is an Odin + Raylib game template with Hot Reloading pre-setup. My game projects tend to have some things in common, so I made this template so I can get up and running quickly.
 
 This template is compatible with Windows, macOS and Linux. The instructions are mostly for Windows, but there is a [non-windows](#non-windows) section that explains the differences.
 
-`build_hot_reload.bat` will build `game.dll` from the odin code in the root of the repository. It will also build `game.exe` from the code in the directory `main_hot_reload`. When you run `game.exe` it will load `game.dll` and start the game. In order to hot reload, make some changes to anything that is compiled as part of `game.dll` and re-run `build_hot_reload.bat`. `game.exe` will notice that `game.dll` changed and reload it. The state you wish to keep between reloads goes into the `Game_Memory` struct in `game.odin`.
+`build_hot_reload.bat` will build `game.dll` from the odin code in the `game` folder. It will also build `game.exe` from the code in the directory `main_hot_reload`. When you run `game.exe` it will load `game.dll` and start the game. In order to hot reload, make some changes to anything that is compiled as part of `game.dll` and re-run `build_hot_reload.bat`. `game.exe` will notice that `game.dll` changed and reload it. The state you wish to keep between reloads goes into the `Game_Memory` struct in `game.odin`.
 
-There is also a `build_release.bat` file that makes a `game_release.exe` that does not have the hot reloading stuff, since you probably do not want that in the released version of your game.
+There is also a `build_release.bat` file that makes a `game_release.exe` that does not have the hot reloading stuff, since you probably do not want that in the released version of your game. This means that the release version does not use `game.dll`, instead it imports the `game` directory as a normal Odin package.
 
 `build_debug.bat` is like `build_release.bat` but makes a debuggable executable, in case you need to debug your non-hot-reload-exe.
 
@@ -17,9 +22,9 @@ There are also some additional files with some helpers that I find useful. See [
 - Copy `raylib.dll` from `your_odin_compiler/vendor/raylib/windows` to the root of this repo.
 - Run `build_hot_reload.bat` to compile `game.exe` and `game.dll`. Note: It expects odin compiler to be part of your PATH environment variable.
 - Run `game.exe`
-- Make changes to the gameplay code (for example, make changes in the proc `update` or `draw` in `game.odin`)
+- Make changes to the gameplay code (for example, make changes in the proc `update` or `draw` in `game/game.odin`)
 - Run `build_hot_reload.bat` again while game.exe is running, it will recompile `game.dll`
-- `game.exe` will reload `game.dll` but use the same Game_Memory (a struct defined in `game.odin`) as before.
+- `game.exe` will reload `game.dll` but use the same Game_Memory (a struct defined in `game/game.odin`) as before.
 
 ### Non-Windows
 
@@ -54,6 +59,8 @@ rl.DrawTextureRec(atlas_texture, atlas_rect, some_position, rl.WHITE)
 
 For aseprite files with multiple frames animations will be outputted, which you find in the array `atlas_animations` of `atlas.odin`.
 
+See `readme.md` in the `atlas_builder` folder for more info and the branch [atlas-animation-example](https://github.com/karl-zylinski/odin-raylib-hot-reload-game-template/tree/atlas-animation-example) for an example on how to use the atlas builder in practice.
+
 ## Demo streams
 
 Streams that start from this template:
@@ -66,12 +73,10 @@ Streams that start from this template:
 
 | Name | Type | Description |
 | ---- | ---- | ----------- |
+| [Atlas & animation example](https://github.com/karl-zylinski/odin-raylib-hot-reload-game-template/tree/atlas-animation-example) | Example | Shows how to use the atlas builder and how to play animations that live within the atlas. This is actually just a branch of this repo |
 | [Subfolders](https://github.com/alfredbaudisch/odin-raylib-hot-reload-game-template/tree/build-subfolders) | Extended Template | Adds sub folders for built binaries and the game DLL's source code |
 
 Got a project based on this template? I'd gladly have it on this list! It can be a game based on the template or an extension/spinoff of the template. Just send me a link on [Discord](https://discord.gg/4FsHgtBmFK) or on karl@zylinski.se, or PR the entry into this README 😻 
-
-## Support me on Patreon
-https://www.patreon.com/karl_zylinski
 
 ## Questions?
 
