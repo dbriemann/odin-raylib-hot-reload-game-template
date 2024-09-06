@@ -1,24 +1,27 @@
-By Karl Zylinski, http://zylinski.se
+By Karl Zylinski, http://zylinski.se -- Support me at https://www.patreon.com/karl_zylinski
 
-Support me at https://www.patreon.com/karl_zylinski
+**See the example folder for a sample program that generates and uses an atlas.**
 
 # What's this?
 
-This atlas builder looks into a 'textures' folder for pngs, ase and aseprite files and makes an atlas from those. It outputs both atlas.png and atlas.odin. The odin file you compile as part of your game. It contains metadata about where in the atlas the textures ended up.
+This atlas builder looks into a 'textures' folder for pngs, ase and aseprite files and makes an atlas from those. It outputs both `atlas.png` and `atlas.odin`. The odin file you compile as part of your game. It contains metadata about where in the atlas the textures ended up.
 
-Showcase & demo video: https://www.youtube.com/watch?v=u8Kt0Td76zI
+Animated aseprite files are supported, animations get their own metadata in `atlas.odin`.
+
+The builder can load a font and bake characters into the atlas.
 
 The atlas builder can also split up tilesets and fonts and splat those out into the atlas. It detects if a texture is a tileset by checking if the name starts with `tileset_`.
 
 A big benefit with using an atlas is that you can drastically lower the number of draw calls due to everything being in a single texture.
 
-# Dependencies
-The generator itself only uses core and vendor libs, plus an aseprite package, which is included.
+Showcase & demo video: https://www.youtube.com/watch?v=u8Kt0Td76zI
 
-As for `atlas.odin`, it has no dependencies. However, I use the types `Rect` and `Vec2` in `atlas.odin` file. Make sure you define them somehow in the same package as you use `atlas.odin` in. For example, if you use raylib:
+# Dependencies
+The generator itself only uses core and vendor libs, plus an aseprite package by blob1807, which is included.
+
+`atlas.odin` uses the type `Rect` which defines a rectangle. Make sure you define such a type in the package where you are going to use `atlas.odin`. For example, if you use Raylib:
 ```
 Rect :: rl.Rectangle
-Vec2 :: rl.Vector2
 ```
 or like this if you don't use raylib:
 ```
@@ -29,41 +32,54 @@ Rect :: struct {
 	width: f32,
 	height: f32,
 }
-Vec2 :: [2]f32
 ```
-Just make sure you have something along those lines the same package as this file (or change the generator code in `atlas_builder.odin` to use other type names).
 
 # How to run the atlas builder
-- In the root of this repository, create a folder called 'textures' and put .ase, .aseprite or .png files in it
-- From the root of the template ropo, execute `odin run atlas_builder`
-- `atlas.png` and `atlas.odin` are ouputted
 
-Change `ATLAS_SIZE` in `atlas_builder.odin` to change the maximum width and height of the atlas.
-Note: The final atlas is cropped to the actual contents inside it, it may be smaller than `ATLAS_SIZE`. Remove the `rl.ImageAlphaCrop(&atlas, 0)` line in `atlas_builder.odin` if you do not what this cropping.
+See the README.md in the `example` folder. But in short:
+- Run this package.
+- It looks for `textures` folder and a `font.ttf` file in the current working directory.
+- `atlas.png` and `atlas.odin` are ouputted
+- Those files can be used within your game to do efficent atlased drawing. See the example for more info.
+
+# Configuration
+
+There are a few constants at the top of `atlas_builder.odin`:
+
+- `ATLAS_SIZE`: Maximum size of `atlas.png`.
+- `ATLAS_PNG_OUTPUT_PATH`: Path to output the atlas PNG to
+- `ATLAS_ODIN_OUTPUT_PATH`: Path to output the atlas Odin metadata file to
+- `ATLAS_CROP`: If atlas should be cropped after generation. Default: true
+- `TILESET_WIDTH`: If you have any texture prefixed with `tileset_`, it will be treated as a tileset. This setting says how many tiles wide it is.
+- `TILESET_SIZE`: How many pixels each tile takes in the tileset
+- `PACKAGE_NAME`: The package name to use at the top of the `atlas.odin` file.
+- `TEXTURES_DIR`: The folder in which to look for textures to put into atlas.
+- `LETTERS_IN_FONT`: The letters to extract from the font.
+- `FONT_FILENAME`: The filename of the font to extract letters from.
+- `FONT_SIZE`: The font size of letters extracted from font
 
 # Loading the atlas
 
-In your game load the atlas once. Here I put it in a globally accessible struct called `g_mem`:
+In your game load the atlas once, for example:
 ```
-g_mem.atlas = rl.LoadTexture(TEXTURE_ATLAS_FILENAME)
+atlas = rl.LoadTexture(TEXTURE_ATLAS_FILENAME)
 ```
-
 
 # Draw textures from atlas
 
 Draw like this using Raylib:
 
 ```
-rl.DrawTextureRec(g_mem.atlas, atlas_textures[.Bush].rect, position, rl.WHITE)
+rl.DrawTextureRec(atlas, atlas_textures[.Bush].rect, position, rl.WHITE)
 ```
 or
 ```
-rl.DrawTexturePro(g_mem.atlas, atlas_textures[.Bush].rect, destination_rect, rl.WHITE)
+rl.DrawTexturePro(atlas, atlas_textures[.Bush].rect, destination_rect, rl.WHITE)
 ```
 
-This uses texture name "Bush" which will exist if there is a texture called `textures/bush.ase`. `atlas_textures` lives in atlas.odin.
+This uses texture name "Bush" which will exist if there is a texture called `textures/bush.ase`. `atlas_textures` lives in `atlas.odin`.
 
-There's also a `atlas_textures[.Bush].offset` you can add to your position. The offset is non-zero if there was empty pixels in the upper regions of the texture. This saves atlas-space, since it would have to write empty pixels otherwise! See the [animation examples](#animations) for how I use it.
+There's also four offsets on `atlas_textures[.Bush]`: `offset_top`, `offset_right`, `offset_bottom` and `offset_left`. The offsets records the distance between the pixels in the atlas and the edge of the original document in the image editing software. Since the atlas is tightly packed, any empty pixels are removed. These offsets can be used to correct for that removal. This saves atlas-space, since it would have to write empty pixels otherwise! Normally you'd need to add `{offset_left, offset_top}` to your position, but if you flip the texture in X or Y direction then you might need the `offset_right` or `offset_bottom`. See the [animation examples](#animations) for exampl I use it.
 
 # Atlas-based Raylib font
 
@@ -90,7 +106,7 @@ font := rl.Font {
 	baseSize = ATLAS_FONT_SIZE,
 	glyphCount = i32(num_glyphs),
 	glyphPadding = 0,
-	texture = g_mem.atlas,
+	texture = atlas,
 	recs = raw_data(font_rects),
 	glyphs = raw_data(glyphs),
 }
@@ -103,7 +119,7 @@ Here `atlas_glyphs` and `ATLAS_FONT_SIZE` exist within `atlas.odin`.
 Do this once at startup:
 
 ```
-rl.SetShapesTexture(g_mem.atlas, shapes_texture_rect)
+rl.SetShapesTexture(atlas, shapes_texture_rect)
 ```
 
 After this whenever you call `rl.DrawRectangleRec` or any of the the other shape drawing procs, then they will use the atlas as well, avoiding separate draw calls for shapes.
@@ -170,13 +186,19 @@ animation_draw :: proc(anim: Animation, pos: rl.Vector2) {
 
 	texture := atlas_textures[anim.current_frame]
 	
-	// Note: The texture.offset may contain a non-zero offset. This offset occurs
-	// when textures have some empty pixels in the upper regions. Instead of the
-	// packer writing in those empty pixels (wasting space), it record how much
-	// you need to offset your texture to compensate for the missing empty pixels.
-	offset_pos := pos + {f32(texture.offset.x), f32(texture.offset.y)}
+	// The texture has four offset fields: offset_top, right, bottom and left. The offsets records
+	// the distance between the pixels in the atlas and the edge of the original document in the
+	// image editing software. Since the atlas is tightly packed, any empty pixels are removed.
+	// These offsets can be used to correct for that removal.
+	//
+	// This can be especially obvious in animations where different frames can have different
+	// amounts of empty pixels around it. By adding the offsets everything will look OK.
+	//
+	// If you ever flip the animation in X or Y direction, then you might need to add the right or
+	// bottom offset instead.
+	offset_pos := pos + {texture.offset_left, texture.offset_top}
 
-	rl.DrawTextureRec(g_mem.atlas, texture.rect, offset_pos, rl.WHITE)
+	rl.DrawTextureRec(atlas, texture.rect, offset_pos, rl.WHITE)
 }
 ```
 

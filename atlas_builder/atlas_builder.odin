@@ -1,7 +1,6 @@
-// By Karl Zylinski, http://zylinski.se
-// Support me at https://www.patreon.com/karl_zylinski
+// By Karl Zylinski, http://zylinski.se -- Support me at https://www.patreon.com/karl_zylinski
 //
-// See readme.md for documentation.
+// See README.md for documentation.
 
 package atlas_builder
 
@@ -17,51 +16,49 @@ import "vendor:stb/rect_pack"
 import ase "aseprite"
 import rl "vendor:raylib"
 
+// Size of atlas in NxN pixels. Note: The outputted atlas PNG is cropped to the visible pixels.
 ATLAS_SIZE :: 512
 
-TILESET_WIDTH :: 10
-TILE_SIZE :: 10
+// Path to output final atlas PNG to
+ATLAS_PNG_OUTPUT_PATH :: "atlas.png"
 
-// for package line at top of atlas metadata file
+// Path to output atlas Odin metadata file to. Compile this as part of your game to get metadata
+// about where in atlas your textures etc are.
+ATLAS_ODIN_OUTPUT_PATH :: "atlas.odin"
+
+// Set to false to not crop atlas after generation.
+ATLAS_CROP :: true
+
+// If you have a tileset (texture with tileset_) prefix, then this is says how many tiles wide it is
+TILESET_WIDTH :: 10
+
+// The NxN pixel size of each tile.
+TILE_SIZE :: 8
+
+// for package line at top of atlas Odin metadata file
 PACKAGE_NAME :: "game"
+
+// The folder within which to look for textures
 TEXTURES_DIR :: "textures"
 
-LETTERS_IN_FONT :: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz1234567890?!&.,_:[]"
+// The letters to extract from the font
+LETTERS_IN_FONT :: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz1234567890?!&.,_:[]-+"
+
+// The font to extract letters from
 FONT_FILENAME :: "font.ttf"
 
-ATLAS_PNG_OUTPUT_PATH :: "atlas.png"
-ATLAS_ODIN_OUTPUT_PATH :: "game/atlas.odin"
-
-dir_path_to_file_infos :: proc(path: string) -> []os.File_Info {
-	d, derr := os.open(path, os.O_RDONLY)
-	if derr != nil {
-		fmt.printfln("No %s folder found", path)
-		return {}
-	}
-	defer os.close(d)
-
-	{
-		file_info, ferr := os.fstat(d)
-		defer os.file_info_delete(file_info)
-
-		if ferr != nil {
-			panic("stat failed")
-		}
-		if !file_info.is_dir {
-			panic("not a directory")
-		}
-	}
-
-	file_infos, _ := os.read_dir(d, -1)
-	return file_infos
-}
+// The font size of letters extracted from font
+FONT_SIZE :: 32
 
 Vec2i :: [2]int
 
 Atlas_Texture_Rect :: struct {
 	rect: rl.Rectangle,
 	size: Vec2i,
-	offset: Vec2i,
+	offset_top: int,
+	offset_right: int,
+	offset_bottom: int,
+	offset_left: int,
 	name: string,
 	duration: f32,
 }
@@ -276,19 +273,19 @@ load_ase_texture_data :: proc(filename: string, textures: ^[dynamic]Texture_Data
 
 		for c in cels {
 			cl := c.cel.(ase.Com_Image_Cel)
-			pixels: []rl.Color
+			cel_pixels: []rl.Color
 
 			if indexed {
-				pixels = make([]rl.Color, int(cl.width) * int(cl.height))
+				cel_pixels = make([]rl.Color, int(cl.width) * int(cl.height))
 				for p, idx in cl.pixel {
 					if p == 0 {
 						continue
 					}
 					
-					pixels[idx] = rl.Color(palette.entries[u32(p)].color)
+					cel_pixels[idx] = rl.Color(palette.entries[u32(p)].color)
 				}
 			} else {
-				pixels = transmute([]rl.Color)(cl.pixel)
+				cel_pixels = transmute([]rl.Color)(cl.pixel)
 			}
 
 			source := rl.Rectangle {
@@ -297,7 +294,7 @@ load_ase_texture_data :: proc(filename: string, textures: ^[dynamic]Texture_Data
 			}
 
 			from := rl.Image {
-				data = raw_data(pixels),
+				data = raw_data(cel_pixels),
 				width = i32(cl.width),
 				height = i32(cl.height),
 				mipmaps = 1,
@@ -395,6 +392,29 @@ main :: proc() {
 	textures: [dynamic]Texture_Data
 	animations: [dynamic]Animation
 
+	dir_path_to_file_infos :: proc(path: string) -> []os.File_Info {
+		d, derr := os.open(path, os.O_RDONLY)
+		if derr != nil {
+			fmt.panicf("No %s folder found", path)
+		}
+		defer os.close(d)
+
+		{
+			file_info, ferr := os.fstat(d)
+			defer os.file_info_delete(file_info)
+
+			if ferr != nil {
+				panic("stat failed")
+			}
+			if !file_info.is_dir {
+				panic("not a directory")
+			}
+		}
+
+		file_infos, _ := os.read_dir(d, -1)
+		return file_infos
+	}
+
 	file_infos := dir_path_to_file_infos(TEXTURES_DIR)
 
 	slice.sort_by(file_infos, proc(i, j: os.File_Info) -> bool {
@@ -424,7 +444,7 @@ main :: proc() {
 
 	letters := utf8.string_to_runes(LETTERS_IN_FONT)
 	num_letters := len(letters)
-	FONT_SIZE :: 8*4
+	
 
 	pack_rects: [dynamic]rect_pack.Rect
 	glyphs: [^]rl.GlyphInfo
@@ -568,10 +588,16 @@ main :: proc() {
 			dest := rl.Rectangle {f32(rp.x), f32(rp.y), source.width, source.height}
 			rl.ImageDraw(&atlas, t_img, source, dest, rl.WHITE)
 
+			offset_right := t.document_size.x - (int(dest.width) + t.offset.x)
+			offset_bottom := t.document_size.y - (int(dest.height) + t.offset.y)
+
 			ar := Atlas_Texture_Rect {
 				rect = dest,
 				size = t.document_size,
-				offset = t.offset,
+				offset_top = t.offset.y,
+				offset_right = offset_right,
+				offset_bottom = offset_bottom,
+				offset_left = t.offset.x,
 				name = t.name,
 				duration = t.duration,
 			}
@@ -582,7 +608,7 @@ main :: proc() {
 			g := glyphs[idx]
 			img_grayscale := g.image
 
-			grayscale := transmute([^]u8)(img_grayscale.data)
+			grayscale := cast([^]u8)(img_grayscale.data)
 			img_pixels := make([]rl.Color, img_grayscale.width*img_grayscale.height)
 
 			for i in 0..<img_grayscale.width*img_grayscale.height {
@@ -629,7 +655,8 @@ main :: proc() {
 
 			rl.ImageDraw(&atlas, t_img, source, dest, rl.WHITE)
 
-			// Add padding lines
+			// Add padding to tiles by adding a pixel border around it and copying the nearest pixels
+			// there. This helps with bleeding when doing subpixel camera movements.
 
 			ts :: TILE_SIZE
 			// Top
@@ -717,29 +744,37 @@ main :: proc() {
 		}
 	}
 
-	rl.ImageAlphaCrop(&atlas, 0)
+	if ATLAS_CROP {
+		rl.ImageAlphaCrop(&atlas, 0)	
+	}
 
 	rl.ExportImage(atlas, ATLAS_PNG_OUTPUT_PATH)
 
 	f, _ := os.open(ATLAS_ODIN_OUTPUT_PATH, os.O_WRONLY | os.O_CREATE | os.O_TRUNC)
 	defer os.close(f)
 
-	fmt.fprintln(f, "// This file is generated by running the atlas_builder, it is run by the build_hot_reload and build_release scripts.")
+	fmt.fprintln(f, "// This file is generated by running the atlas_builder.")
 	fmt.fprintf(f, "package %s\n", PACKAGE_NAME)
 	fmt.fprintln(f, "")
-	fmt.fprintln(f, "// Note: The types Rect and Vec2 can be defined as:")
+	fmt.fprintln(f, "// Note: This file assumes the existance of a type Rect that defines a rectangle in the same package, it can defined as:")
 	fmt.fprintln(f, "// Rect :: rl.Rectangle")
-	fmt.fprintln(f, "// Vec2 :: rl.Vector2")
-	fmt.fprintln(f, "// Or if you don't use raylib:")
+	fmt.fprintln(f, "// or if you don't use raylib:")
 	fmt.fprintln(f, "// Rect :: struct {")
 	fmt.fprintln(f, "//     x: f32,")
 	fmt.fprintln(f, "//     y: f32,")
 	fmt.fprintln(f, "//     width: f32,")
 	fmt.fprintln(f, "//     height: f32,")
 	fmt.fprintln(f, "// }")
-	fmt.fprintln(f, "// Vec2 :: [2]f32")
 	fmt.fprintln(f, "// Just make sure you have something along those lines the same package as this file.")
 	fmt.fprintln(f, "")
+
+	fmt.fprintln(f, "TEXTURE_ATLAS_FILENAME :: \"atlas.png\"")
+	fmt.fprintf(f, "ATLAS_FONT_SIZE :: %v\n", FONT_SIZE)
+	fmt.fprintf(f, "LETTERS_IN_FONT :: \"%s\"\n\n", LETTERS_IN_FONT)
+
+	fmt.fprintln(f, "// A generated square in the atlas you can use with rl.SetShapesTexture to make")
+	fmt.fprintln(f, "// raylib shapes such as rl.DrawRectangleRec() use the atlas.")
+	fmt.fprintf(f, "SHAPES_TEXTURE_RECT :: Rect {{%v, %v, %v, %v}}\n\n", shapes_texture_rect.x, shapes_texture_rect.y, shapes_texture_rect.width, shapes_texture_rect.height)
 
 	fmt.fprintln(f, "Texture_Name :: enum {")
 	fmt.fprint(f, "\tNone,\n")
@@ -751,8 +786,16 @@ main :: proc() {
 
 	fmt.fprintln(f, "Atlas_Texture :: struct {")
 	fmt.fprintln(f, "\trect: Rect,")
-	fmt.fprintln(f, "\toffset: Vec2,")
-	fmt.fprintln(f, "\tdocument_size: Vec2,")
+	fmt.fprintln(f, "\t// These offsets tell you how much space there is between the rect and the edge of the original document.")
+	fmt.fprintln(f, "\t// The atlas is tightly packed, so empty pixels are removed. This can be especially apparent in animations where")
+	fmt.fprintln(f, "\t// frames can have different offsets due to different amount of empty pixels around the frames.")
+	fmt.fprintln(f, "\t// In many cases you need to add {offset_left, offset_top} to your position. But if you are")
+	fmt.fprintln(f, "\t// flipping a texture, then you might need offset_bottom or offset_right.")
+	fmt.fprintln(f, "\toffset_top: f32,")
+	fmt.fprintln(f, "\toffset_right: f32,")
+	fmt.fprintln(f, "\toffset_bottom: f32,")
+	fmt.fprintln(f, "\toffset_left: f32,")
+	fmt.fprintln(f, "\tdocument_size: [2]f32,")
 	fmt.fprintln(f, "\tduration: f32,")
 	fmt.fprintln(f, "}")
 	fmt.fprintln(f, "")
@@ -761,45 +804,7 @@ main :: proc() {
 	fmt.fprintln(f, "\t.None = {},")
 
 	for r in atlas_textures {
-		fmt.fprintf(f, "\t.%s = {{ rect = {{%v, %v, %v, %v}}, offset = {{%v, %v}}, document_size = {{%v, %v}}, duration = %f}},\n", r.name, r.rect.x, r.rect.y, r.rect.width, r.rect.height, r.offset.x, r.offset.y, r.size.x, r.size.y, r.duration)
-	}
-
-	fmt.fprintln(f, "}\n")
-
-	fmt.fprintln(f, "Atlas_Glyph :: struct {")
-	fmt.fprintln(f, "\trect: Rect,")
-	fmt.fprintln(f, "\tvalue: rune,")
-	fmt.fprintln(f, "\toffset_x: int,")
-	fmt.fprintln(f, "\toffset_y: int,")
-	fmt.fprintln(f, "\tadvance_x: int,")
-	fmt.fprintln(f, "}")
-	fmt.fprintln(f, "")
-
-	fmt.fprintln(f, "atlas_glyphs: []Atlas_Glyph = {")
-
-	for ag in atlas_glyphs {
-		fmt.fprintf(f, "\t{{ rect = {{%v, %v, %v, %v}}, value = %q, offset_x = %v, offset_y = %v, advance_x = %v}},\n",
-			ag.rect.x, ag.rect.y, ag.rect.width, ag.rect.height, ag.glyph.value, ag.glyph.offsetX, ag.glyph.offsetY, ag.glyph.advanceX)
-	}
-
-	fmt.fprintln(f, "}\n")
-
-	fmt.fprintf(f, "shapes_texture_rect := Rect {{%v, %v, %v, %v}}\n\n", shapes_texture_rect.x, shapes_texture_rect.y, shapes_texture_rect.width, shapes_texture_rect.height)
-
-	fmt.fprintln(f, "Tile_Id :: enum {")
-	for y in 0..<TILESET_WIDTH {
-		for x in 0..<TILESET_WIDTH {
-			fmt.fprintf(f, "\tT0Y%vX%v,\n", y, x)
-		}
-	}
-	fmt.fprintln(f, "}")
-	fmt.fprintln(f, "")
-
-	fmt.fprintln(f, "atlas_tiles := #partial [Tile_Id]Rect {")
-
-	for at in atlas_tiles {
-		fmt.fprintf(f, "\t.T0Y%vX%v = {{%v, %v, %v, %v}},\n",
-			 at.coord.y, at.coord.x, at.rect.x, at.rect.y, at.rect.width, at.rect.height)
+		fmt.fprintf(f, "\t.%s = {{ rect = {{%v, %v, %v, %v}}, offset_top = %v, offset_right = %v, offset_bottom = %v, offset_left = %v, document_size = {{%v, %v}}, duration = %f}},\n", r.name, r.rect.x, r.rect.y, r.rect.width, r.rect.height, r.offset_top, r.offset_right, r.offset_bottom, r.offset_left, r.size.x, r.size.y, r.duration)
 	}
 
 	fmt.fprintln(f, "}\n")
@@ -820,10 +825,12 @@ main :: proc() {
 	fmt.fprintln(f, "}")
 	fmt.fprintln(f, "")
 
+	fmt.fprintln(f, "// Any aseprite file with frames will create new animations. Also, any tags")
+	fmt.fprintln(f, "// within the aseprite file will make that that into a separate animation.")
 	fmt.fprintln(f, "Atlas_Animation :: struct {")
 	fmt.fprintln(f, "\tfirst_frame: Texture_Name,")
 	fmt.fprintln(f, "\tlast_frame: Texture_Name,")
-	fmt.fprintln(f, "\tdocument_size: Vec2,")
+	fmt.fprintln(f, "\tdocument_size: [2]f32,")
 	fmt.fprintln(f, "\tloop_direction: Tag_Loop_Dir,")
 	fmt.fprintln(f, "\trepeat: u16,")
 	fmt.fprintln(f, "}")
@@ -839,7 +846,43 @@ main :: proc() {
 
 	fmt.fprintln(f, "}\n")
 
-	fmt.fprintln(f, "TEXTURE_ATLAS_FILENAME :: \"atlas.png\"")
-	fmt.fprintf(f, "ATLAS_FONT_SIZE :: %v\n", FONT_SIZE)
-	fmt.fprintf(f, "LETTERS_IN_FONT :: \"%s\"\n", LETTERS_IN_FONT)
+
+	fmt.fprintln(f, "// All these are pre-generated so you can save tile IDs to data without")
+	fmt.fprintln(f, "// worrying about their order changing later.")
+	fmt.fprintln(f, "Tile_Id :: enum {")
+	for y in 0..<TILESET_WIDTH {
+		for x in 0..<TILESET_WIDTH {
+			fmt.fprintf(f, "\tT0Y%vX%v,\n", y, x)
+		}
+	}
+	fmt.fprintln(f, "}")
+	fmt.fprintln(f, "")
+
+	fmt.fprintln(f, "atlas_tiles := #partial [Tile_Id]Rect {")
+
+	for at in atlas_tiles {
+		fmt.fprintf(f, "\t.T0Y%vX%v = {{%v, %v, %v, %v}},\n",
+			 at.coord.y, at.coord.x, at.rect.x, at.rect.y, at.rect.width, at.rect.height)
+	}
+
+	fmt.fprintln(f, "}\n")
+
+
+	fmt.fprintln(f, "Atlas_Glyph :: struct {")
+	fmt.fprintln(f, "\trect: Rect,")
+	fmt.fprintln(f, "\tvalue: rune,")
+	fmt.fprintln(f, "\toffset_x: int,")
+	fmt.fprintln(f, "\toffset_y: int,")
+	fmt.fprintln(f, "\tadvance_x: int,")
+	fmt.fprintln(f, "}")
+	fmt.fprintln(f, "")
+
+	fmt.fprintln(f, "atlas_glyphs: []Atlas_Glyph = {")
+
+	for ag in atlas_glyphs {
+		fmt.fprintf(f, "\t{{ rect = {{%v, %v, %v, %v}}, value = %q, offset_x = %v, offset_y = %v, advance_x = %v}},\n",
+			ag.rect.x, ag.rect.y, ag.rect.width, ag.rect.height, ag.glyph.value, ag.glyph.offsetX, ag.glyph.offsetY, ag.glyph.advanceX)
+	}
+
+	fmt.fprintln(f, "}")
 }
