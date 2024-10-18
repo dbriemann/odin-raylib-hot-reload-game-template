@@ -23,7 +23,7 @@ PIXEL_WINDOW_HEIGHT :: 180
 DELTA :: 1.0 / 60
 
 Game_Memory :: struct {
-	player_pos:  Vec2,
+	player_pos:  rl.Vector2,
 	some_number: int,
 }
 
@@ -32,7 +32,7 @@ temp_g_mem: ^Game_Memory
 accu: f32 = 0
 
 Input :: struct {
-	dir: Vec2,
+	dir: rl.Vector2,
 }
 
 game_camera :: proc() -> rl.Camera2D {
@@ -69,7 +69,7 @@ input_update :: proc() -> Input {
 
 update :: proc(state: ^Game_Memory, input: Input, dt: f32) {
 	g_mem.player_pos += input.dir * dt * 100
-	g_mem.some_number += 1
+	g_mem.some_number += 2
 }
 
 draw :: proc(state: ^Game_Memory) {
