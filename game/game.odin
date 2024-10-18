@@ -1,5 +1,5 @@
 // This file is compiled as part of the `odin.dll` file. It contains the
-// procs that `game.exe` will call, such as:
+// procs that `game_hot_reload.exe` will call, such as:
 //
 // game_init: Sets up the game state
 // game_update: Run once per frame

@@ -1,15 +1,5 @@
 #!/usr/bin/env bash
 
-VET="-strict-style -vet-unused -vet-using-stmt -vet-using-param -vet-style -vet-semicolon"
-
-# Run atlas builder, which outputs game/atlas.odin and atlas.png
-# Note: You'll have to modify atlas_builder.odin to output atlas.odin to the game subfolder.
-# odin run atlas_builder -out:atlas_builder.bin -debug $VET
-# if [ ! $? -eq 0 ]; then
-#     exit 1
-# fi
-# chmod +rw game/atlas.odin
-
 # NOTE: this is a recent addition to the Odin compiler, if you don't have this command
 # you can change this to the path to the Odin folder that contains vendor, eg: "~/Odin".
 ROOT=$(odin root)
@@ -44,14 +34,18 @@ case $(uname) in
 esac
 
 # Build the game.
-odin build game -extra-linker-flags:"$EXTRA_LINKER_FLAGS" -show-timings -define:RAYLIB_SHARED=true -build-mode:dll -out:game_tmp$DLL_EXT -debug $VET
+echo "Building game$DLL_EXT"
+odin build game -extra-linker-flags:"$EXTRA_LINKER_FLAGS" -define:RAYLIB_SHARED=true -build-mode:dll -out:game_tmp$DLL_EXT -strict-style -vet -debug
 
 # Need to use a temp file on Linux because it first writes an empty `game.so`, which the game will load before it is actually fully written.
 mv game_tmp$DLL_EXT game$DLL_EXT
 
-# Do not build the game.bin if it is already running.
-if pgrep game.bin > /dev/null; then
+# Do not build the game_hot_reload.bin if it is already running.
+# -f is there to make sure we match against full name, including .bin
+if pgrep -f game_hot_reload.bin > /dev/null; then
+    echo "Game running, hot reloading..."
     exit 1
 else
-    odin build main_hot_reload -out:game.bin $VET -debug
+    echo "Building game_hot_reload.bin"
+    odin build main_hot_reload -out:game_hot_reload.bin -strict-style -vet -debug
 fi

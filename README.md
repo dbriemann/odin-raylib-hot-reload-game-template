@@ -1,66 +1,66 @@
 # Odin + Raylib + Hot Reload template
 
-This is an Odin + Raylib game template with Hot Reloading pre-setup. The techniques shown in this repository makes it possible to reload gameplay code while the game is running.
+This is an [Odin](https://github.com/odin-lang/Odin) + [Raylib](https://github.com/raysan5/raylib) game template with [Hot Reloading](http://zylinski.se/posts/hot-reload-gameplay-code/) pre-setup. It makes it possible to reload gameplay code while the game is running.
 
-By Karl Zylinski, http://zylinski.se -- Support me at https://www.patreon.com/karl_zylinski
+Supported platforms: Windows, macOS and Linux.
+
+Supported editors and debuggers: [Sublime Text](#sublime-text), [VS Code](#vs-code) and [RAD Debugger](#rad-debugger).
+
+![hot_reload gif](https://github.com/user-attachments/assets/18059ab2-0878-4617-971d-e629a969fc93)
+
+I used this kind of hot reloading while developing my game [CAT & ONION](https://store.steampowered.com/app/2781210/CAT__ONION/).
+
+## Quick start
+
+If you are on Linux / macOS: Below, replace `.bat` with `.sh` and `.exe` with `.bin`.
+
+1. Run `build_hot_reload.bat` to create `game_hot_reload.exe` and `game.dll`. Note: It expects odin compiler to be part of your PATH environment variable.
+2. Run `game_hot_reload.exe`, leave it running.
+3. Make changes to the gameplay code in `game/game.odin`. For example, change the line `rl.ClearBackground(rl.BLACK)` so that it instead uses `rl.BLUE`. Save the file.
+4. Run `build_hot_reload.bat`, it will recompile `game.dll`.
+5. The running `game_hot_reload.exe` will see that `game.dll` changed and reload it. But it will use the same `Game_Memory` (a struct defined in `game/game.odin`) as before. This will make the game use your new code without having to restart.
+
+Note, in step 4: `build_hot_reload.bat` does not rebuild `game_hot_reload.exe`. It checks if `game_hot_reload.exe` is already running, and if it is, it avoid recompiling it, since it will be locked anyways.
 
 ## Description
 
-This template is compatible with Windows, macOS and Linux. The instructions are mostly for Windows, but there is a [non-windows](#non-windows) section that explains the differences.
+`build_hot_reload.bat` will build `game.dll` from the odin code in the `game` folder. It will also build `game_hot_reload.exe` from the code in the folder `main_hot_reload`.
 
-`build_hot_reload.bat` will build `game.dll` from the odin code in the `game` folder. It will also build `game.exe` from the code in the directory `main_hot_reload`. When you run `game.exe` it will load `game.dll` and start the game. In order to hot reload, make some changes to anything that is compiled as part of `game.dll` and re-run `build_hot_reload.bat`. `game.exe` will notice that `game.dll` changed and reload it. The state you wish to keep between reloads goes into the `Game_Memory` struct in `game/game.odin`.
+When you run `game_hot_reload.exe` it will load `game.dll` and start the game. In order to hot reload, make some changes to anything in the `game` folder and re-run `build_hot_reload.bat`.
 
-There is also a `build_release.bat` file that makes a `game_release.exe` that does not have the hot reloading stuff, since you probably do not want that in the released version of your game. This means that the release version does not use `game.dll`, instead it imports the `game` directory as a normal Odin package.
+`game_hot_reload.exe` will notice that `game.dll` changed and reload it. The state you wish to keep between reloads goes into the `Game_Memory` struct in `game/game.odin`.
+
+There is also a `build_release.bat` file that makes a `game_release.exe` that does not have the hot reloading stuff, since you probably do not want that in the released version of your game. This means that the release version does not use `game.dll`, instead it imports the `game` folder as a normal Odin package.
 
 `build_debug.bat` is like `build_release.bat` but makes a debuggable executable, in case you need to debug your non-hot-reload-exe.
 
-There are also some additional files with some helpers that I find useful. See [Optional files](#optional-files) below.
-
-## Setup and usage
-
-- Copy `raylib.dll` from `your_odin_compiler/vendor/raylib/windows` to the root of this repo.
-- Run `build_hot_reload.bat` to compile `game.exe` and `game.dll`. Note: It expects odin compiler to be part of your PATH environment variable.
-- Run `game.exe`
-- Make changes to the gameplay code (for example, make changes in the proc `update` or `draw` in `game/game.odin`)
-- Run `build_hot_reload.bat` again while game.exe is running, it will recompile `game.dll`
-- `game.exe` will reload `game.dll` but use the same Game_Memory (a struct defined in `game/game.odin`) as before.
-
-### Non-Windows
-
-The template also supports Linux and MacOS, all mentions of `.bat` scripts have an equivalent `.sh` script, and the game is built as `game.bin` instead of `game.exe`.
-
-Unlike Windows, there is no need to copy any Raylib library to the root of this repo.
-
 ## Sublime Text
 
-There's sublime project called `project.sublime-project` in case you use Sublime Text. It comes with a build system, you should be able to open the project, select the build system (Main Menu -> Tools -> Build System -> Game template) and then compile + run the game by pressing F7/Ctrl+B/Cmd+B. Edit the project file to change the name of the build system.
+For those who use Sublime Text there's a project file: `project.sublime-project`.
+
+How to use:
+- Open the project file in sublime
+- Choose the build system `Main Menu -> Tools -> Build System -> Game template` (you can rename the build system by editing `project.sublime-project` manually)
+- Compile and run by pressing using F7 / Ctrl + B / Cmd + B
+- After you make code changes and want to hot reload, just hit F7 / Ctrl + B / Cmd + B again
+
+## RAD Debugger
+You can hot reload while attached to [RAD Debugger](https://github.com/EpicGamesExt/raddebugger). Attach to your `game_hot_reload` executable, make code changes in your code editor and re-run the the `build_hot_reload` script to build and hot reload.
 
 ## VS Code
 
-Included there are Debug and Release tasks for VS Code. If you install the [CodeLLDB](https://marketplace.visualstudio.com/items?itemName=vadimcn.vscode-lldb) extension, it's possible to Debug the project code with the included Debug task.
+You can build, debug and hot reload from within VS Code. Open the template using `File -> Open Folder...`.
 
-A task to build and hot reload is also included, build, run and rebuild with `Ctrl+B` or `Command Palette` -> `Task: Run Build Task`.
+Requirements for debugging to work:
+- Windows: [C++ build tools](https://marketplace.visualstudio.com/items?itemName=ms-vscode.cpptools)
+- Linux / Mac: [CodeLLDB](https://marketplace.visualstudio.com/items?itemName=vadimcn.vscode-lldb)
 
-## Optional files
+<img alt="Image showing  how to start debugging session by selecting Build Hot Reload from the dropdown in the Run and Debug sidebar" src="https://github.com/user-attachments/assets/e62d710b-06f1-4833-bb2a-ab95527cf38c" width="50%" title="Start debugging session by chooing 'Run Hot Reload' and pressing the green arrow button">
 
-Only `game/game.odin` and `game/math.odin` are required to compile the game DLL. You can delete the other `.odin` files in the `game` folder if you wish. They are there because they contain things I often use in all projects. Most of them have a description at the top of the file, explaining what it contains.
+Launch with `Run Hot Reload` launch task, see image above. After you make code changes press `Ctrl + Shift + B` to rebuild and hot reload.
 
-## Atlas builder
-
-The `atlas_builder` subfolder contains a program that builds a texture atlas from separate aseprite and png files. You can look in `build_hot_reload.bat` for more info on how to enable it. The atlas builder outputs both an atlas PNG file as well as an `atlas.odin` file that contains metadata about where in the atlas the images are.
-
-The atlas builder is meant to be run before the game DLL is compiled. Then, in your gameplay you can use `atlas_textures` in `atlas.odin` to know where in the atlas your textures ended up. Load the `atlas.png` using `rl.LoadTexture()` and then draw using it, something like:
-
-```
-atlas_rect := atlas_textures[.Some_Texture]
-rl.DrawTextureRec(atlas_texture, atlas_rect, some_position, rl.WHITE)
-```
-
-For aseprite files with multiple frames animations will be outputted, which you find in the array `atlas_animations` of `atlas.odin`.
-
-See `readme.md` in the `atlas_builder` folder for more info, there's also an example in that folder on how to use it.
-
-Note that the atlas builder's source is hosted in a separate repository: https://github.com/karl-zylinski/atlas-builder
+## Windows Debugging hacks
+On Windows the degugging while hot reloading works by outputting a new PDB each time the game DLL is built. It cleans up the PDBs when you do a fresh start. See `build_hot_reload.bat` for details.
 
 ## Demo streams
 
@@ -69,6 +69,10 @@ Streams that start from this template:
 - "point & click" prototype: https://www.youtube.com/watch?v=iRvs1Xr1W6o
 - Metroidvania / platform prototype: https://www.youtube.com/watch?v=kIxEMchPc3Y
 - Top-down adventure prototype: https://www.youtube.com/watch?v=cl8EOjOaoXc
+
+## Atlas builder
+
+The template works nicely together with my [atlas builder](https://github.com/karl-zylinski/atlas-builder). The atlas builder can build an atlas texture from a folder of png or aseprite files. Using an atlas can drastically reduce the number of draw calls your game uses. There's an example in that repository on how to set it up. The atlas generation step can easily be integrated into the build `bat` / `sh` files such as `build_hot_reload.bat`
 
 ## Questions?
 
