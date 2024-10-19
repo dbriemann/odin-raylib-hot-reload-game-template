@@ -23,27 +23,27 @@ PIXEL_WINDOW_HEIGHT :: 180
 DELTA :: 1.0 / 60
 
 Game_State :: struct {
-	player_pos:  rl.Vector2,
-	some_number: int,
+	player_pos: rl.Vector2,
+	tick_count: f64,
 }
 
 Game_Memory :: struct {
 	game_state:   Game_State,
 	render_state: Game_State,
+	accu:         f32,
 }
 
 g_mem: ^Game_Memory
-accu: f32 = 0
 
 Input :: struct {
 	dir: rl.Vector2,
 }
 
-game_camera :: proc() -> rl.Camera2D {
+game_camera :: proc(state: ^Game_State) -> rl.Camera2D {
 	w := f32(rl.GetScreenWidth())
 	h := f32(rl.GetScreenHeight())
 
-	return {zoom = h / PIXEL_WINDOW_HEIGHT, target = g_mem.game_state.player_pos, offset = {w / 2, h / 2}}
+	return {zoom = h / PIXEL_WINDOW_HEIGHT, target = state.player_pos, offset = {w / 2, h / 2}}
 }
 
 ui_camera :: proc() -> rl.Camera2D {
@@ -71,16 +71,11 @@ input_update :: proc() -> Input {
 	return input
 }
 
-update :: proc(state: ^Game_State, input: Input, dt: f32) {
-	state.player_pos += input.dir * dt * 100
-	state.some_number += 5
-}
-
 draw :: proc(state: ^Game_State) {
 	rl.BeginDrawing()
 	rl.ClearBackground(rl.BLACK)
 
-	rl.BeginMode2D(game_camera())
+	rl.BeginMode2D(game_camera(state))
 	rl.DrawRectangleV(state.player_pos, {10, 20}, rl.WHITE)
 	rl.DrawRectangleV({20, 20}, {10, 10}, rl.RED)
 	rl.DrawRectangleV({-30, -20}, {10, 10}, rl.GREEN)
@@ -88,7 +83,7 @@ draw :: proc(state: ^Game_State) {
 
 	rl.BeginMode2D(ui_camera())
 	rl.DrawText(
-		fmt.ctprintf("some_number: %v\nplayer_pos: %v", state.some_number, state.player_pos),
+		fmt.ctprintf("tick_count: %v\nplayer_pos: %v", int(state.tick_count), state.player_pos),
 		5,
 		5,
 		8,
@@ -99,21 +94,24 @@ draw :: proc(state: ^Game_State) {
 	rl.EndDrawing()
 }
 
+tick :: proc(state: ^Game_State, input: Input, dt: f32) {
+	state.player_pos += input.dir * dt * 100
+	state.tick_count += 1
+}
+
 @(export)
 game_update :: proc() -> bool {
 	frame_time := rl.GetFrameTime()
-	accu += frame_time
+	g_mem.accu += frame_time
 
 	input := input_update()
 
-	for ; accu > DELTA; accu -= DELTA {
-		fmt.println("accu", accu)
-		update(&g_mem.game_state, input, DELTA)
-		input = {}
+	for ; g_mem.accu > DELTA; g_mem.accu -= DELTA {
+		tick(&g_mem.game_state, input, DELTA)
+		// TODO: clear input that is not DOWN
 	}
-	fmt.println("PARTIAL accu", accu)
 	runtime.mem_copy_non_overlapping(&g_mem.render_state, &g_mem.game_state, size_of(Game_State))
-	update(&g_mem.render_state, input, accu)
+	tick(&g_mem.render_state, input, g_mem.accu)
 
 	draw(&g_mem.render_state)
 
@@ -132,7 +130,7 @@ game_init :: proc() {
 	g_mem = new(Game_Memory)
 
 	g_mem^ = Game_Memory {
-		game_state = Game_State{some_number = 100},
+		game_state   = Game_State{},
 		render_state = Game_State{},
 	}
 
