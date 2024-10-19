@@ -31,13 +31,10 @@ Game_Memory :: struct {
 	game_state:   Game_State,
 	render_state: Game_State,
 	accu:         f32,
+	tick_input:   Input,
 }
 
 g_mem: ^Game_Memory
-
-Input :: struct {
-	dir: rl.Vector2,
-}
 
 game_camera :: proc(state: ^Game_State) -> rl.Camera2D {
 	w := f32(rl.GetScreenWidth())
@@ -50,25 +47,19 @@ ui_camera :: proc() -> rl.Camera2D {
 	return {zoom = f32(rl.GetScreenHeight()) / PIXEL_WINDOW_HEIGHT}
 }
 
-input_update :: proc() -> Input {
-	input := Input{}
+input_update :: proc() {
+	frame_input: Input
+	frame_input.cursor = rl.GetMousePosition()
+	frame_input.actions[.Left] = Input__flags_from_keys(.A, .LEFT)
+	frame_input.actions[.Right] = Input__flags_from_keys(.D, .RIGHT)
+	frame_input.actions[.Up] = Input__flags_from_keys(.W, .UP)
+	frame_input.actions[.Down] = Input__flags_from_keys(.S, .DOWN)
 
-	if rl.IsKeyDown(.UP) || rl.IsKeyDown(.W) {
-		input.dir.y -= 1
+	g_mem.tick_input.cursor = frame_input.cursor
+	// _accumulate_ temp flags instead of overwriting
+	for flags, action in frame_input.actions {
+		g_mem.tick_input.actions[action] += flags
 	}
-	if rl.IsKeyDown(.DOWN) || rl.IsKeyDown(.S) {
-		input.dir.y += 1
-	}
-	if rl.IsKeyDown(.LEFT) || rl.IsKeyDown(.A) {
-		input.dir.x -= 1
-	}
-	if rl.IsKeyDown(.RIGHT) || rl.IsKeyDown(.D) {
-		input.dir.x += 1
-	}
-
-	input.dir = linalg.normalize0(input.dir)
-
-	return input
 }
 
 draw :: proc(state: ^Game_State) {
@@ -95,7 +86,18 @@ draw :: proc(state: ^Game_State) {
 }
 
 tick :: proc(state: ^Game_State, input: Input, dt: f32) {
-	state.player_pos += input.dir * dt * 100
+	move_dir: rl.Vector2
+	if .Down in input.actions[.Left] do move_dir.x -= 1
+	if .Down in input.actions[.Right] do move_dir.x += 1
+	if .Down in input.actions[.Up] do move_dir.y -= 1
+	if .Down in input.actions[.Down] do move_dir.y += 1
+
+	move_dir = linalg.normalize(move_dir)
+
+	moving := move_dir != 0
+	if moving {
+		state.player_pos += move_dir * dt * 100
+	}
 	state.tick_count += 1
 }
 
@@ -104,14 +106,17 @@ game_update :: proc() -> bool {
 	frame_time := rl.GetFrameTime()
 	g_mem.accu += frame_time
 
-	input := input_update()
+	input_update()
+
+	any_tick := g_mem.accu > DELTA
+	defer if any_tick do g_mem.tick_input = {}
 
 	for ; g_mem.accu > DELTA; g_mem.accu -= DELTA {
-		tick(&g_mem.game_state, input, DELTA)
-		// TODO: clear input that is not DOWN
+		tick(&g_mem.game_state, g_mem.tick_input, DELTA)
+		Input__clear_volatile(&g_mem.tick_input)
 	}
 	runtime.mem_copy_non_overlapping(&g_mem.render_state, &g_mem.game_state, size_of(Game_State))
-	tick(&g_mem.render_state, input, g_mem.accu)
+	tick(&g_mem.render_state, g_mem.tick_input, g_mem.accu)
 
 	draw(&g_mem.render_state)
 
