@@ -19,12 +19,18 @@ import "core:fmt"
 import "core:math/linalg"
 import rl "vendor:raylib"
 
-PIXEL_WINDOW_HEIGHT :: 180
+import "../utils/tween"
+
+PIXEL_WINDOW_HEIGHT :: 200
 DELTA :: 1.0 / 60
 
 Game_State :: struct {
-	player_pos: rl.Vector2,
 	tick_count: f64,
+	zoom_tween: tween.Tween,
+	zoom:       f32,
+	camera:     rl.Camera2D,
+	fixpoint:   rl.Vector2,
+	player_pos: rl.Vector2,
 }
 
 Game_Memory :: struct {
@@ -36,11 +42,25 @@ Game_Memory :: struct {
 
 g_mem: ^Game_Memory
 
-game_camera :: proc(state: ^Game_State) -> rl.Camera2D {
+set_game_camera :: proc(state: ^Game_State, input: Input) {
+	mouse_world_before := rl.GetScreenToWorld2D(input.cursor, state.camera)
+
 	w := f32(rl.GetScreenWidth())
 	h := f32(rl.GetScreenHeight())
 
-	return {zoom = h / PIXEL_WINDOW_HEIGHT, target = state.player_pos, offset = {w / 2, h / 2}}
+	screen_center := rl.Vector2{w / 2, h / 2}
+
+	state.camera = {
+		zoom   = state.zoom,
+		target = state.fixpoint,
+		offset = screen_center,
+	}
+
+	mouse_world_after := rl.GetScreenToWorld2D(input.cursor, state.camera)
+
+	translated := mouse_world_after - mouse_world_before
+	state.camera.target -= translated
+	state.fixpoint -= translated
 }
 
 ui_camera :: proc() -> rl.Camera2D {
@@ -50,13 +70,14 @@ ui_camera :: proc() -> rl.Camera2D {
 input_update :: proc() {
 	frame_input: Input
 	frame_input.cursor = rl.GetMousePosition()
+	frame_input.wheel = rl.GetMouseWheelMove()
 	frame_input.actions[.Left] = Input__flags_from_keys(.A, .LEFT)
 	frame_input.actions[.Right] = Input__flags_from_keys(.D, .RIGHT)
 	frame_input.actions[.Up] = Input__flags_from_keys(.W, .UP)
 	frame_input.actions[.Down] = Input__flags_from_keys(.S, .DOWN)
 
 	g_mem.tick_input.cursor = frame_input.cursor
-	// _accumulate_ temp flags instead of overwriting
+	g_mem.tick_input.wheel = frame_input.wheel
 	for flags, action in frame_input.actions {
 		g_mem.tick_input.actions[action] += flags
 	}
@@ -66,7 +87,7 @@ draw :: proc(state: ^Game_State) {
 	rl.BeginDrawing()
 	rl.ClearBackground(rl.BLACK)
 
-	rl.BeginMode2D(game_camera(state))
+	rl.BeginMode2D(state.camera)
 	rl.DrawRectangleV(state.player_pos, {10, 20}, rl.WHITE)
 	rl.DrawRectangleV({20, 20}, {10, 10}, rl.RED)
 	rl.DrawRectangleV({-30, -20}, {10, 10}, rl.GREEN)
@@ -86,6 +107,8 @@ draw :: proc(state: ^Game_State) {
 }
 
 tick :: proc(state: ^Game_State, input: Input, dt: f32) {
+	state.tick_count += 1
+
 	move_dir: rl.Vector2
 	if .Down in input.actions[.Left] do move_dir.x -= 1
 	if .Down in input.actions[.Right] do move_dir.x += 1
@@ -93,12 +116,28 @@ tick :: proc(state: ^Game_State, input: Input, dt: f32) {
 	if .Down in input.actions[.Down] do move_dir.y += 1
 
 	move_dir = linalg.normalize(move_dir)
-
 	moving := move_dir != 0
 	if moving {
 		state.player_pos += move_dir * dt * 100
 	}
-	state.tick_count += 1
+
+	if input.wheel != 0 {
+		target := state.zoom_tween.end
+		if input.wheel < 0 {
+			target /= 1.75
+		} else if input.wheel > 0 {
+			target *= 1.75
+		}
+		if target < 1 {
+			target = 1
+		}
+		state.zoom_tween = tween.new_Tween(state.zoom, target, 0.25, tween.ease_linear)
+	}
+
+	current, _ := tween.Tween__update(&state.zoom_tween, dt)
+	state.zoom = current
+
+	set_game_camera(state, input)
 }
 
 @(export)
@@ -107,14 +146,17 @@ game_update :: proc() -> bool {
 	g_mem.accu += frame_time
 
 	input_update()
+	// fmt.println()
 
 	any_tick := g_mem.accu > DELTA
 	defer if any_tick do g_mem.tick_input = {}
 
 	for ; g_mem.accu > DELTA; g_mem.accu -= DELTA {
+		// fmt.println("update tick")
 		tick(&g_mem.game_state, g_mem.tick_input, DELTA)
 		Input__clear_volatile(&g_mem.tick_input)
 	}
+	// fmt.println(g_mem.tick_input.wheel)
 	runtime.mem_copy_non_overlapping(&g_mem.render_state, &g_mem.game_state, size_of(Game_State))
 	tick(&g_mem.render_state, g_mem.tick_input, g_mem.accu)
 
@@ -126,7 +168,7 @@ game_update :: proc() -> bool {
 @(export)
 game_init_window :: proc() {
 	rl.SetConfigFlags({.WINDOW_RESIZABLE, .VSYNC_HINT})
-	rl.InitWindow(1280, 720, "Odin + Raylib + Hot Reload template!")
+	rl.InitWindow(1200, 800, "Odin + Raylib + Hot Reload template!")
 	rl.SetWindowPosition(200, 200)
 }
 
@@ -135,7 +177,15 @@ game_init :: proc() {
 	g_mem = new(Game_Memory)
 
 	g_mem^ = Game_Memory {
-		game_state   = Game_State{},
+		game_state = Game_State {
+			zoom = 1.0,
+			zoom_tween = tween.new_Tween(1, 1, 0.25, tween.ease_in_cubic),
+			camera = rl.Camera2D {
+				zoom = 1.0,
+				target = {0, 0},
+				offset = {f32(rl.GetScreenWidth() / 2), f32(rl.GetScreenHeight() / 2)},
+			},
+		},
 		render_state = Game_State{},
 	}
 

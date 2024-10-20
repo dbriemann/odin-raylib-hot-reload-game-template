@@ -4,6 +4,7 @@ import rl "vendor:raylib"
 
 Input :: struct {
 	cursor:  rl.Vector2,
+	wheel:   f32,
 	actions: [Input_Action]bit_set[Input_Flag],
 }
 
@@ -37,6 +38,7 @@ Input__flags_from_mouse_button :: proc(mb: rl.MouseButton) -> (flags: bit_set[In
 }
 
 Input__clear_volatile :: proc(input: ^Input) {
+	input.wheel = 0
 	for &action in input.actions {
 		// Clear all inputs besides persisting input actions (DOWN actions).
 		action -= ~{.Down}

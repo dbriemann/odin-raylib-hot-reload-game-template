@@ -9,7 +9,7 @@ Tween :: struct {
 	time:      f32,
 	begin:     f32,
 	end:       f32,
-	change:    f32,
+	range:     f32,
 	overflow:  f32,
 	ease_func: Ease_Func,
 	reverse:   bool,
@@ -17,15 +17,15 @@ Tween :: struct {
 
 // new_Tween will return a new Tween when passed:
 // a beginning and end value,
-// the duration of the tween,
-// and the easing function to animate between the two values. 
+// the duration of the tween in seconds,
+// and the easing function to animate between the two values.
 // The easing function can be one of the provided easing functions or you can provide one of your own.
 new_Tween :: proc(begin, end, duration: f32, ease_func: Ease_Func) -> Tween {
 	t := Tween {
 		begin     = begin,
 		end       = end,
 		duration  = duration,
-		change    = end - begin,
+		range     = end - begin,
 		ease_func = ease_func,
 		overflow  = 0,
 		reverse   = false,
@@ -49,7 +49,7 @@ Tween__set :: proc(tween: ^Tween, time: f32) -> (current: f32, finished: bool) {
 	case:
 		tween.overflow = 0
 		tween.time = time
-		current = tween.ease_func(tween.time, tween.begin, tween.change, tween.duration)
+		current = tween.ease_func(tween.time, tween.begin, tween.range, tween.duration)
 	}
 
 	if tween.reverse {
@@ -68,7 +68,6 @@ Tween__reset :: proc(tween: ^Tween) {
 		Tween__set(tween, 0)
 	}
 }
-
 
 // Tween__update will increment the timer of the Tween and ease the value.
 // It will then return the current value as well as a bool to mark if the tween is finished or not.
