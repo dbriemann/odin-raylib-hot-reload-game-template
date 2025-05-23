@@ -13,6 +13,7 @@ Input_Action :: enum u8 {
 	Right,
 	Up,
 	Down,
+    Esc,
 	Mouse_Left,
 	Mouse_Right,
 }

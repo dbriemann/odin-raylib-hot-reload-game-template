@@ -27,89 +27,194 @@ created.
 
 package game
 
+import "base:runtime"
 import "core:fmt"
+import "core:math"
 import "core:math/linalg"
 import rl "vendor:raylib"
 
-PIXEL_WINDOW_HEIGHT :: 180
+import "tween"
 
-Game_Memory :: struct {
-	player_pos: rl.Vector2,
-	player_texture: rl.Texture,
-	some_number: int,
-	run: bool,
+DELTA :: 1.0 / 60
+
+Game_State :: struct {
+	// Flags
+	running:     bool,
+
+	// UI state data
+	zoom_tween:  tween.Tween,
+	zoom:        f32,
+	dragging:    bool,
+	drag_origin: [2]f32,
+	drag_target: [2]f32,
+	drag_dir:    [2]f32,
+	fixpoint:    [2]f32,
+	camera:      rl.Camera2D,
+
+	// Actual game state data
+	tick_count:  f64,
+	player_pos:  [2]f32,
 }
 
-g: ^Game_Memory
+Game_Memory :: struct {
+	game_state:   Game_State,
+	render_state: Game_State,
+	accu:         f32,
+	tick_input:   Input,
+}
 
-game_camera :: proc() -> rl.Camera2D {
+g_mem: ^Game_Memory
+
+set_game_camera :: proc(state: ^Game_State, input: Input) {
+	mouse_world_before := rl.GetScreenToWorld2D(input.cursor, state.camera)
+
 	w := f32(rl.GetScreenWidth())
 	h := f32(rl.GetScreenHeight())
 
-	return {
-		zoom = h/PIXEL_WINDOW_HEIGHT,
-		target = g.player_pos,
-		offset = { w/2, h/2 },
+	screen_center := rl.Vector2{w / 2, h / 2}
+
+	state.camera = {
+		zoom   = state.zoom,
+		target = state.fixpoint,
+		offset = screen_center,
+	}
+
+	mouse_world_after := rl.GetScreenToWorld2D(input.cursor, state.camera)
+
+	translated := mouse_world_after - mouse_world_before
+	state.camera.target -= translated
+	state.fixpoint -= translated
+
+	if state.dragging {
+		state.camera.target += state.drag_dir
 	}
 }
 
 ui_camera :: proc() -> rl.Camera2D {
-	return {
-		zoom = f32(rl.GetScreenHeight())/PIXEL_WINDOW_HEIGHT,
+	return {zoom = 1}
+}
+
+input_update :: proc() {
+	frame_input: Input
+	frame_input.cursor = rl.GetMousePosition()
+	frame_input.wheel = rl.GetMouseWheelMove()
+	frame_input.actions[.Left] = Input__flags_from_keys(.A, .LEFT)
+	frame_input.actions[.Right] = Input__flags_from_keys(.D, .RIGHT)
+	frame_input.actions[.Up] = Input__flags_from_keys(.W, .UP)
+	frame_input.actions[.Down] = Input__flags_from_keys(.S, .DOWN)
+	frame_input.actions[.Esc] = Input__flags_from_keys(.ESCAPE)
+	frame_input.actions[.Mouse_Right] = Input__flags_from_mouse_button(.RIGHT)
+	frame_input.actions[.Mouse_Left] = Input__flags_from_mouse_button(.LEFT)
+
+	g_mem.tick_input.cursor = frame_input.cursor
+	g_mem.tick_input.wheel = frame_input.wheel
+	for flags, action in frame_input.actions {
+		g_mem.tick_input.actions[action] += flags
 	}
 }
 
-update :: proc() {
-	input: rl.Vector2
-
-	if rl.IsKeyDown(.UP) || rl.IsKeyDown(.W) {
-		input.y -= 1
-	}
-	if rl.IsKeyDown(.DOWN) || rl.IsKeyDown(.S) {
-		input.y += 1
-	}
-	if rl.IsKeyDown(.LEFT) || rl.IsKeyDown(.A) {
-		input.x -= 1
-	}
-	if rl.IsKeyDown(.RIGHT) || rl.IsKeyDown(.D) {
-		input.x += 1
-	}
-
-	input = linalg.normalize0(input)
-	g.player_pos += input * rl.GetFrameTime() * 100
-	g.some_number += 1
-
-	if rl.IsKeyPressed(.ESCAPE) {
-		g.run = false
-	}
-}
-
-draw :: proc() {
+draw :: proc(state: ^Game_State) {
 	rl.BeginDrawing()
 	rl.ClearBackground(rl.BLACK)
 
-	rl.BeginMode2D(game_camera())
-	rl.DrawTextureEx(g.player_texture, g.player_pos, 0, 1, rl.WHITE)
+	rl.BeginMode2D(state.camera)
+	rl.DrawRectangleV(state.player_pos, {10, 20}, rl.WHITE)
 	rl.DrawRectangleV({20, 20}, {10, 10}, rl.RED)
 	rl.DrawRectangleV({-30, -20}, {10, 10}, rl.GREEN)
 	rl.EndMode2D()
 
 	rl.BeginMode2D(ui_camera())
-
-	// NOTE: `fmt.ctprintf` uses the temp allocator. The temp allocator is
-	// cleared at the end of the frame by the main application, meaning inside
-	// `main_hot_reload.odin`, `main_release.odin` or `main_web_entry.odin`.
-	rl.DrawText(fmt.ctprintf("some_number: %v\nplayer_pos: %v", g.some_number, g.player_pos), 5, 5, 8, rl.WHITE)
-
+	rl.SetTextLineSpacing(24)
+	rl.DrawText(fmt.ctprintf("tick_count: %v\n", int(state.tick_count)), 5, 5, 24, rl.WHITE)
+	if state.dragging {
+		rl.DrawLineV(state.drag_origin, state.drag_target, rl.WHITE)
+		rl.DrawCircleV(state.drag_origin, 4, rl.GREEN)
+		rl.DrawCircleV(state.drag_target, 4, rl.RED)
+	}
 	rl.EndMode2D()
 
 	rl.EndDrawing()
 }
 
+tick :: proc(state: ^Game_State, input: Input, dt: f32) {
+	// Update input & ui data.
+	if .Down in input.actions[.Esc] do state.running = false
+	move_dir: rl.Vector2
+	if .Down in input.actions[.Left] do move_dir.x -= 1
+	if .Down in input.actions[.Right] do move_dir.x += 1
+	if .Down in input.actions[.Up] do move_dir.y -= 1
+	if .Down in input.actions[.Down] do move_dir.y += 1
+
+	move_dir = linalg.normalize(move_dir)
+
+	if input.wheel != 0 {
+		target := state.zoom_tween.end
+		if input.wheel < 0 {
+			target /= 1.75
+		} else if input.wheel > 0 {
+			target *= 1.75
+		}
+		if target < 1 {
+			target = 1
+		}
+		state.zoom_tween = tween.new_Tween(state.zoom, target, 0.25, tween.ease_linear)
+	}
+
+	if .Down in input.actions[.Mouse_Right] {
+		if !state.dragging {
+			// Start dragging.
+			state.dragging = true
+			// state.drag_origin = input.cursor
+			state.drag_origin = {f32(rl.GetScreenWidth() / 2), f32(rl.GetScreenHeight() / 2)}
+		} else {
+			// Drag (move).
+			state.drag_target = input.cursor
+			state.drag_dir = state.drag_target - state.drag_origin
+			state.drag_dir *= 2 * dt / math.sqrt(state.zoom)
+		}
+	}
+	if .Released in input.actions[.Mouse_Right] {
+		// Stop dragging.
+		state.dragging = false
+	}
+	current, _ := tween.Tween__update(&state.zoom_tween, dt)
+	state.zoom = current
+
+	set_game_camera(state, input)
+
+	// Update game data.
+	state.tick_count += 1
+
+	moving := move_dir != 0
+	if moving {
+		state.player_pos += move_dir * dt * 100
+	}
+}
+
+///////////////////
+
+
 @(export)
 game_update :: proc() {
-	update()
-	draw()
+	frame_time := rl.GetFrameTime()
+	g_mem.accu += frame_time
+
+	input_update()
+	// fmt.println()
+
+	any_tick := g_mem.accu > DELTA
+	defer if any_tick do g_mem.tick_input = {}
+
+	for ; g_mem.accu > DELTA; g_mem.accu -= DELTA {
+		// fmt.println("update tick")
+		tick(&g_mem.game_state, g_mem.tick_input, DELTA)
+		Input__clear_volatile(&g_mem.tick_input)
+	}
+	// fmt.println(g_mem.tick_input.wheel)
+	runtime.mem_copy_non_overlapping(&g_mem.render_state, &g_mem.game_state, size_of(Game_State))
+	tick(&g_mem.render_state, g_mem.tick_input, g_mem.accu)
+
+	draw(&g_mem.render_state)
 
 	// Everything on tracking allocator is valid until end-of-frame.
 	free_all(context.temp_allocator)
@@ -118,26 +223,34 @@ game_update :: proc() {
 @(export)
 game_init_window :: proc() {
 	rl.SetConfigFlags({.WINDOW_RESIZABLE, .VSYNC_HINT})
-	rl.InitWindow(1280, 720, "Odin + Raylib + Hot Reload template!")
+	rl.InitWindow(1280, 800, "Odin + Raylib + Hot Reload template!")
 	rl.SetWindowPosition(200, 200)
-	rl.SetTargetFPS(500)
 	rl.SetExitKey(nil)
 }
 
 @(export)
 game_init :: proc() {
-	g = new(Game_Memory)
+	g_mem = new(Game_Memory)
 
-	g^ = Game_Memory {
-		run = true,
-		some_number = 100,
+	g_mem^ = Game_Memory {
+		game_state = Game_State {
+            running = true,
+			zoom = 1.0,
+			zoom_tween = tween.new_Tween(1, 1, 0.25, tween.ease_in_cubic),
+			camera = rl.Camera2D {
+				zoom = 1.0,
+				target = {0, 0},
+				offset = {f32(rl.GetScreenWidth() / 2), f32(rl.GetScreenHeight() / 2)},
+			},
 
-		// You can put textures, sounds and music in the `assets` folder. Those
-		// files will be part any release or web build.
-		player_texture = rl.LoadTexture("assets/round_cat.png"),
+            // You can put textures, sounds and music in the `assets` folder. Those
+            // files will be part any release or web build.
+            // player_texture = rl.LoadTexture("assets/round_cat.png"),
+		},
+		render_state = Game_State{},
 	}
 
-	game_hot_reloaded(g)
+	game_hot_reloaded(g_mem)
 }
 
 @(export)
@@ -149,12 +262,12 @@ game_should_run :: proc() -> bool {
 		}
 	}
 
-	return g.run
+	return g_mem.game_state.running
 }
 
 @(export)
 game_shutdown :: proc() {
-	free(g)
+	free(g_mem)
 }
 
 @(export)
@@ -164,7 +277,7 @@ game_shutdown_window :: proc() {
 
 @(export)
 game_memory :: proc() -> rawptr {
-	return g
+	return g_mem
 }
 
 @(export)
@@ -174,7 +287,7 @@ game_memory_size :: proc() -> int {
 
 @(export)
 game_hot_reloaded :: proc(mem: rawptr) {
-	g = (^Game_Memory)(mem)
+	g_mem = (^Game_Memory)(mem)
 
 	// Here you can also set your own global variables. A good idea is to make
 	// your global variables into pointers that point to something inside `g`.
